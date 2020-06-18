@@ -83,12 +83,15 @@ def iter_edit_contents(page: PageObject) -> Iterator[str]:
 
         try:
             if edit["/Subj"] in EDITS:
-                yield edit["/Subj"], edit["/Contents"]
+                if edit["/Subj"] == "Cross-Out":
+                    yield edit["/Subj"], "-"
+                else:
+                    yield edit["/Subj"], edit["/Contents"]
         except KeyError:
             continue
 
 
-def load_comments(filename: str) -> SeverityDict:
+def load_comments(filename: str, offset: int) -> SeverityDict:
     res: SeverityDict = defaultdict(list)
 
     reader = PdfFileReader(filename, STRICT)
@@ -103,9 +106,9 @@ def load_comments(filename: str) -> SeverityDict:
             # number of stars
             severity = len(stars)
 
-            res[severity].append(f"p{page_num}: {comment}")
+            res[severity].append(f"p{page_num - offset}: {comment}")
         for edit_type, edit in iter_edit_contents(page):
-            res[2].append(f"p{page_num}: {edit_type:<12}: {edit}")
+            res[2].append(f"p{page_num - offset}: {edit_type} ({edit})")
 
     return res
 
@@ -128,8 +131,8 @@ def save_comments(severities: SeverityDict, filename: str) -> None:
             write_comments(severity, comments, file)
 
 
-def pdfcomments(infilename: str, outfilename: Optional[str] = None) -> int:
-    severities = load_comments(infilename)
+def pdfcomments(infilename: str, offset: int, outfilename: Optional[str] = None) -> int:
+    severities = load_comments(infilename, offset)
 
     if outfilename is None:
         outfilename = extsep.join([Path(infilename).stem, OUT_EXT])
@@ -150,6 +153,7 @@ def parse_args(args: List[str]) -> Namespace:
         nargs="?",
         help="output text file" " (default: infile with extension changed to 'txt')",
     )
+    parser.add_argument("--offset", help="page numbering offset", type=int, default=0)
 
     version = f"%(prog)s {__version__}"
     parser.add_argument("--version", action="version", version=version)
@@ -160,7 +164,7 @@ def parse_args(args: List[str]) -> Namespace:
 def main(argv: List[str] = sys.argv[1:]) -> int:
     args = parse_args(argv)
 
-    return pdfcomments(args.infile, args.outfile)
+    return pdfcomments(args.infile, args.offset, args.outfile)
 
 
 if __name__ == "__main__":
