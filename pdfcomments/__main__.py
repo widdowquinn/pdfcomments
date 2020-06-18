@@ -42,15 +42,19 @@ ENCODING = "utf-8"
 OUT_EXT = "txt"
 STRICT = False
 
-SEVERITY_NAMES = {0: "Minor comments",
-                  1: "Major comments"}
+SEVERITY_NAMES = {0: "Minor comments", 1: "Major comments", 2: "Edits"}
+
+# Edits to be reported
+EDITS = ("Cross-Out", "Inserted Text")
 
 re_stars = re.compile(
     r"""^
     (?P<stars>\**)
     \s*
     (?P<comment>.*)
-    $""", re.DOTALL | re.VERBOSE)
+    $""",
+    re.DOTALL | re.VERBOSE,
+)
 
 
 def iter_annot_contents(page: PageObject) -> Iterator[str]:
@@ -64,6 +68,22 @@ def iter_annot_contents(page: PageObject) -> Iterator[str]:
 
         try:
             yield annot["/Contents"]
+        except KeyError:
+            continue
+
+
+def iter_edit_contents(page: PageObject) -> Iterator[str]:
+    try:
+        edit_indirects = page["/Annots"]
+    except KeyError:
+        return
+
+    for edit_indirect in edit_indirects:
+        edit = edit_indirect.getObject()
+
+        try:
+            if edit["/Subj"] in EDITS:
+                yield edit["/Subj"], edit["/Contents"]
         except KeyError:
             continue
 
@@ -84,6 +104,8 @@ def load_comments(filename: str) -> SeverityDict:
             severity = len(stars)
 
             res[severity].append(f"p{page_num}: {comment}")
+        for edit_type, edit in iter_edit_contents(page):
+            res[2].append(f"p{page_num}: {edit_type:<12}: {edit}")
 
     return res
 
@@ -123,9 +145,11 @@ def parse_args(args: List[str]) -> Namespace:
     description = __doc__.splitlines()[0].partition(": ")[2]
     parser = ArgumentParser(description=description)
     parser.add_argument("infile", help="input PDF file")
-    parser.add_argument("outfile", nargs="?",
-                        help="output text file"
-                        " (default: infile with extension changed to 'txt')")
+    parser.add_argument(
+        "outfile",
+        nargs="?",
+        help="output text file" " (default: infile with extension changed to 'txt')",
+    )
 
     version = f"%(prog)s {__version__}"
     parser.add_argument("--version", action="version", version=version)
